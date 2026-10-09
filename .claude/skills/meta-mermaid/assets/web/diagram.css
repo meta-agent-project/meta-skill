@@ -1,0 +1,15 @@
+/* 도식 — 가로 스크롤 없음. 원래 크기보다 키우지 않고, 넓으면 담는 쪽 폭에 맞춰 줄인다 */
+/* 토큰이 프로젝트에 없으면 뒤의 기본값을 쓴다. 있으면 프로젝트 토큰 이름으로 바꾼다 */
+.mermaid-diagram {
+  margin: 0 0 var(--space-3, 1rem);
+}
+.mermaid-diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.mermaid-diagram-error {
+  margin: calc(-1 * var(--space-3, 1rem) + var(--space-1, 0.25rem)) 0 var(--space-3, 1rem);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-muted, #6b6b6b);
+}
