@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { drawReturns, emphasizeKeys, layoutDiagram, type Laid } from "./layout";
+import { drawCycleReturn, drawReturns, emphasizeKeys, layoutDiagram, type Laid } from "./layout";
 import { installElkAdjust } from "./elk-adjust";
 import { DIAGRAM_CONFIG } from "./theme";
 
@@ -79,16 +79,17 @@ export function Diagram({ code, fallback }: { code: string; fallback: ReactNode 
     };
   }, [code, width, noWrap]);
 
-  // 그림을 넣고 PK 줄 굵게 · 줄바꿈 연결선은 그려진 뒤에. 연결선을 못 그리면 줄바꿈 없이 다시 배치(세로)
+  // 그림을 넣고 PK 줄 굵게 · 줄바꿈 연결선 · 순환의 돌아가는 선은 그려진 뒤에. 선을 못 그리면 보정 없이 다시 배치
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || !laid) return;
     el.innerHTML = laid.svg;
     emphasizeKeys(el);
     const svg = el.querySelector("svg");
-    if (!laid.wrap || !svg) return;
+    if ((!laid.wrap && !laid.cycle) || !svg) return;
     try {
-      drawReturns(svg, laid.wrap);
+      if (laid.wrap) drawReturns(svg, laid.wrap);
+      if (laid.cycle) drawCycleReturn(svg, laid.cycle);
     } catch {
       setNoWrap(true);
     }

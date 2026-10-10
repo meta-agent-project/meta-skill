@@ -211,9 +211,24 @@ function removeEndJogs(s: ElkSection, off: Pt, from: Rect, to: Rect, blocked: (p
   s.bendPoints = poly.slice(1, -1).map(rel);
 }
 
-/** layout(g)를 감싼다: 배치 전 마름모 꼭짓점 포트, 배치 뒤 선 끝 되돌리기 · 선 펴기 */
+/** layout.ts ELK_COMPACT — mergeEdges 자리에 실려 온 좁힘 표시 */
+const COMPACT_MARK = "meta-compact";
+const MERGE_EDGES = "elk.layered.mergeEdges";
+/** 좁힐 때 ELK 간격 기준값(layout-elk 기본 40) */
+const COMPACT_SPACING = "20";
+
+/** 좁힘 표시가 있으면 지우고(mergeEdges는 기본 false로) 간격 기준값을 줄인다 */
+export function applyCompact(g: ElkGraph): void {
+  const o = g.layoutOptions;
+  if (!o || o[MERGE_EDGES] !== COMPACT_MARK) return;
+  o[MERGE_EDGES] = "false";
+  o["spacing.baseValue"] = COMPACT_SPACING;
+}
+
+/** layout(g)를 감싼다: 배치 전 좁힘 · 마름모 꼭짓점 포트, 배치 뒤 선 끝 되돌리기 · 선 펴기 */
 export function withAdjust(layout: (g: ElkGraph) => Promise<ElkGraph>): (g: ElkGraph) => Promise<ElkGraph> {
   return async (g) => {
+    applyCompact(g);
     addVertexPorts(g);
     const out = await layout(g);
     restoreEnds(out);

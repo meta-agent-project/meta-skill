@@ -46,6 +46,16 @@
 - 사용자가 "선과 선 사이 글자는 지우자"고 정했다. layout.ts의 dropRelationLabels가 그리기 전에 ER 관계 줄 글자를 비운다.
 - 글자 자리가 빠지면서 같은 10개 ERD가 세로로 뒤집히지 않고 가로 81.9%, 글자 11.5px로 들어갔다(전에는 세로, 7.5px).
 
+## 2026-10-10 두 렌더러 비교와 합침
+
+- meta-mermaid와 codelab-mermaid(리엑트강의)가 10-08 원본에서 갈라졌다. 같은 원본 4종(흐름도 갈래 · 반복, ERD 10개, 상태도, 긴 한 줄)을 두 엔진으로 그려 비교했다.
+- ERD와 긴 한 줄은 meta가 나았다. 순환이 있는 흐름도는 ELK가 시작 도형을 잘못 골라(로그인 화면이 옆으로 밀림, 실패 시나리오가 오류 표시부터 시작) dagre가 나았다.
+- 그래서 순환 있는 흐름 도식은 dagre 곡선, 없으면 ELK로 정했다(사용자가 엔진 판단을 맡김).
+- 흐름 도식 줄이기 단계를 살렸다. layout-elk는 spacing.baseValue를 40으로 박아 둬서, 줄일 때 mergeEdges 자리에 표시를 실어 보내고 elk-adjust가 20으로 바꾼다. 성공 시나리오가 두 줄 대신 한 줄(12.2px)로 들어갔다.
+- codelab의 세 노드 순환(일자 + 아래로 돌아가는 선)을 assets/web/layout.ts로 옮겼다. codelab은 runtime.js에만 있어 웹 화면과 그림 파일이 달랐다.
+- 쓰기 규칙은 사용자가 나눌지 판단하기 어렵다고 해서, 한 장으로 재 보고 정하기로 했다. height > width, fontPx < 11, 겹침 중 하나면 나눈다. 재기용으로 render.mjs --format none(파일 없음)과 결과 width · height를 더했다.
+- 두 스킬은 같은 엔진 · 같은 쓰기 규칙을 쓴다. codelab-mermaid에는 리엑트강의 원고 위치만 더한다.
+
 ## 검토에서 더한 것
 
 - AI가 원고에 %%{init: {"theme":"dark"}}%%나 frontmatter config를 넣으면 모양이 바뀌던 문제가 있었다. mermaid secure 목록으로 테마 키를 잠그고, 그리기 전에 init 줄 · frontmatter 설정을 지운다(제목만 남김).

@@ -6,8 +6,10 @@ export type Edge = { start: string; end: string; text: string; type: string; str
 export type Chain = { order: Vertex[]; links: Edge[] };
 /** 줄바꿈 배치로 그렸을 때 줄 사이 연결선을 그리는 데 쓰는 것 */
 export type Wrap = { rid: string; rows: Vertex[][]; links: Edge[]; k: number };
+/** 세 노드 순환에서 따로 그리는 돌아가는 선(마지막 → 처음) */
+export type Cycle = { from: string; to: string; text: string };
 /** 고른 그림 · 어떤 배치인지 · 원래 크기로 그렸을 때의 폭 */
-export type Laid = { svg: string; kind: "base" | "compact" | "wrap" | "flip"; natural: number; wrap?: Wrap };
+export type Laid = { svg: string; kind: "base" | "compact" | "wrap" | "flip"; natural: number; wrap?: Wrap; cycle?: Cycle };
 export type LayoutOptions = { stale?: () => boolean; noWrap?: boolean };
 
 /** layoutDiagram이 쓰는 mermaid 부분 */
@@ -21,14 +23,11 @@ export const MIN_SCALE = parseFloat(DIAGRAM_STYLE.minFontSize) / parseFloat(DIAG
 
 /** 간격 · 여백을 좁힌 설정 (배치 순서 2) */
 export const COMPACT = [
-  "---",
-  "config:",
   "  er: { nodeSpacing: 30, rankSpacing: 30, entityPadding: 8, minEntityWidth: 60 }",
-  "  flowchart: { nodeSpacing: 30, rankSpacing: 30 }",
   "  state: { nodeSpacing: 30, rankSpacing: 30 }",
-  "---",
-  "",
-].join("\n");
+];
+/** ELK 간격은 mermaid 설정으로 못 바꾼다 — 이 표시를 실어 보내면 elk-adjust가 간격을 좁힌다 */
+export const ELK_COMPACT = "meta-compact";
 
 const FRONTMATTER = /^\s*---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/;
 const DIRECTIVE = /^[ \t]*%%\{[\s\S]*?\}%%[ \t]*(\r?\n|$)/gm;
@@ -40,16 +39,21 @@ export function stripOverrides(code: string): { title: string | null; body: stri
   return { title, body: (fm ? code.slice(fm[0].length) : code).replace(DIRECTIVE, "") };
 }
 
-/** 흐름 도식만 직각 배치(ELK) — 흐름 도식 글 앞에 붙이는 설정. 전역으로 켜면 ER도 ELK로 바뀐다 */
-export const ELK = ["---", "config:", "  layout: elk", "---", ""].join("\n");
 const FLOW = /^\s*(flowchart|graph)\b/;
 const isFlow = (body: string) => FLOW.test(body);
 
-const withTitle = (title: string | null, body: string) => {
-  if (isFlow(body)) return (title ? ELK.replace("---\nconfig:", `---\ntitle: ${title}\nconfig:`) : ELK) + body;
-  return title ? `---\ntitle: ${title}\n---\n${body}` : body;
-};
-const compactOf = (title: string | null, body: string) => (title ? COMPACT.replace("---\nconfig:", `---\ntitle: ${title}\nconfig:`) : COMPACT) + body;
+/** 흐름 도식을 무엇으로 배치하나: 되돌아가는 선이 없으면 직각(ELK), 있으면 dagre 곡선(ELK가 시작 도형을 잘못 고른다). 흐름 도식이 아니면 null */
+export type Flow = "elk" | "dagre" | null;
+
+/** 도식 글 앞에 붙이는 frontmatter — 제목 · 흐름 배치기 · 좁힌 간격 */
+export function frame(title: string | null, body: string, flow: Flow, compact = false): string {
+  const config: string[] = [];
+  if (flow === "elk") config.push("  layout: elk", ...(compact ? [`  elk: { mergeEdges: ${ELK_COMPACT} }`] : []));
+  if (flow === "dagre") config.push(`  flowchart: { curve: basis${compact ? ", nodeSpacing: 30, rankSpacing: 30" : ""} }`);
+  if (compact && !flow) config.push(...COMPACT);
+  if (!title && !config.length) return body;
+  return ["---", ...(title ? [`title: ${title}`] : []), ...(config.length ? ["config:", ...config] : []), "---", body].join("\n");
+}
 
 const ER_OR_STATE = /^\s*(erDiagram|stateDiagram(-v2)?)\b[^\n]*/;
 
@@ -151,21 +155,76 @@ export function displayText(text: string, labelType?: string): string {
   return labelType === "markdown" ? t.value.replace(/\*\*|__|`/g, "").replace(/(^|[^*])\*(?!\*)/g, "$1") : t.value;
 }
 
-type FlowDb ={ getVertices(): Map<string, Vertex> | Record<string, Vertex>; getEdges(): Edge[]; getSubGraphs(): unknown[] };
+type FlowDb = { getVertices(): Map<string, Vertex> | Record<string, Vertex>; getEdges(): Edge[]; getSubGraphs(): unknown[] };
+type FlowGraph = { vertices: Vertex[]; edges: Edge[]; subgraphs: number };
 
-async function readChain(m: MermaidLike, code: string): Promise<Chain | null> {
-  if (!/^\s*(flowchart|graph)\s+(LR|RL)\b/.test(code)) return null;
+async function readFlow(m: MermaidLike, code: string): Promise<FlowGraph | null> {
+  if (!isFlow(code)) return null;
   const db = (await m.mermaidAPI.getDiagramFromText(code)).db as FlowDb;
   const vs = db.getVertices();
-  return chainOf(vs instanceof Map ? [...vs.values()] : Object.values(vs), db.getEdges(), db.getSubGraphs().length);
+  return { vertices: vs instanceof Map ? [...vs.values()] : Object.values(vs), edges: db.getEdges(), subgraphs: db.getSubGraphs().length };
+}
+
+/** 되돌아가는 선(순환)이 있는지 */
+export function hasCycle(edges: Pick<Edge, "start" | "end">[]): boolean {
+  const next = new Map<string, string[]>();
+  for (const e of edges) next.set(e.start, [...(next.get(e.start) ?? []), e.end]);
+  const state = new Map<string, 1 | 2>(); // 1 = 지나는 중, 2 = 끝남
+  const visit = (id: string): boolean => {
+    if (state.get(id) === 1) return true;
+    if (state.get(id) === 2) return false;
+    state.set(id, 1);
+    const found = (next.get(id) ?? []).some(visit);
+    state.set(id, 2);
+    return found;
+  };
+  return [...next.keys()].some(visit);
+}
+
+const ID = String.raw`[\p{L}_][\p{L}\p{N}_]*`;
+const STATE_EDGE = new RegExp(String.raw`^\s*(${ID})\s+-->\s+(${ID})(?:\s*:\s*(.*?))?\s*$`, "u");
+const FLOW_EDGE = new RegExp(String.raw`^\s*(${ID})(?:\[[^\]]*\]|\{[^}]*\})?\s*-->(?:\|([^|]*)\|)?\s*(${ID})(?:\[[^\]]*\]|\{[^}]*\})?\s*$`, "u");
+
+/**
+ * 세 노드 순환(A → B → C → A, 가로 흐름 · 가로 상태도)이면 돌아가는 선을 뺀 글과 그 선. 아니면 null.
+ * 앞으로 가는 둘은 일자로 그리고, 돌아가는 선은 그린 뒤 아래로 돌려 더한다(drawCycleReturn)
+ */
+export function simpleCycle(code: string): (Cycle & { source: string }) | null {
+  const state = /^\s*stateDiagram-v2\b/.test(code) && /^\s*direction LR\s*$/m.test(code);
+  if (!state && !/^\s*flowchart LR\s*$/m.test(code)) return null;
+  if (/\bsubgraph\b|\[\*\]|^\s*state\s+\S+\s*\{/m.test(code)) return null;
+  const lines = code.split("\n");
+  if (lines.filter((line) => line.includes("-->")).length !== 3) return null;
+  const edges = lines.flatMap((line, index) => {
+    const m = (state ? STATE_EDGE : FLOW_EDGE).exec(line);
+    return m ? [{ from: m[1], to: m[state ? 2 : 3], text: (state ? m[3] : m[2]) ?? "", index }] : [];
+  });
+  if (edges.length !== 3) return null;
+  const [first, second, back] = edges;
+  if (first.to !== second.from || second.to !== back.from || back.to !== first.from) return null;
+  if (new Set([first.from, first.to, second.to]).size !== 3) return null;
+  return { source: lines.filter((_, i) => i !== back.index).join("\n"), from: back.from, to: back.to, text: back.text.replace(/^"(.*)"$/, "$1") };
 }
 
 /**
  * 읽는 글 폭(width)에 맞는 그림을 고른다: 원래대로 → 간격 좁혀 줄임(글자 ≥ 최소) → 한 줄 흐름은 줄바꿈 배치 → 세로.
  * 첫 그리기만 실패가 실패다. 뒤 단계가 실패하면 그때까지의 가장 좋은 그림을 쓴다.
+ * 세 노드 순환은 돌아가는 선을 빼고 일자로 배치한다(줄바꿈 · 세로가 되면 순환 그대로 다시).
  * width가 0이면(폭을 모름) 원래대로 한 번만 그린다. stale()이 참이 되면(더 새 배치) 그리기 사이에서 멈춘다.
+ * noWrap이면 줄바꿈 · 세 노드 순환 없이 그린다(그린 뒤 선을 더하지 못했을 때).
  */
 export async function layoutDiagram(m: MermaidLike, code: string, width: number, id: string, opts: LayoutOptions = {}): Promise<Laid> {
+  const { title, body: raw } = stripOverrides(code);
+  const body = preferHorizontal(dropRelationLabels(raw));
+  const cycle = opts.noWrap ? null : simpleCycle(body);
+  if (cycle) {
+    const laid = await layoutBody(m, title, cycle.source, width, id, opts);
+    if (laid.kind === "base" || laid.kind === "compact") return { ...laid, cycle: { from: cycle.from, to: cycle.to, text: cycle.text } };
+  }
+  return layoutBody(m, title, body, width, cycle ? `${id}r` : id, opts);
+}
+
+async function layoutBody(m: MermaidLike, title: string | null, body: string, width: number, id: string, opts: LayoutOptions): Promise<Laid> {
   const check = () => {
     if (opts.stale?.()) throw new Error("stale");
   };
@@ -178,34 +237,31 @@ export async function layoutDiagram(m: MermaidLike, code: string, width: number,
       check();
     }
   };
-  const { title, body: raw } = stripOverrides(code);
-  const body = preferHorizontal(dropRelationLabels(raw));
-  const first = (await m.render(`${id}a`, withTitle(title, body))).svg;
+  const graph = await readFlow(m, body).catch(() => null);
+  check();
+  const flow: Flow = !isFlow(body) ? null : graph && hasCycle(graph.edges) ? "dagre" : "elk";
+  const first = (await m.render(`${id}a`, frame(title, body, flow))).svg;
   check();
   const natural = svgWidth(first);
   let best: Laid = { svg: first, kind: "base", natural };
   if (!width || natural <= width) return best;
 
-  // 흐름 도식은 ELK 간격이 고정이라 좁혀도 같다 — 건너뛴다
-  const compact = isFlow(body) ? null : await attempt(`${id}b`, compactOf(title, body));
+  const compact = await attempt(`${id}b`, frame(title, body, flow, true));
   if (compact) {
     best = { svg: compact, kind: "compact", natural };
     if (width / svgWidth(compact) >= MIN_SCALE) return best;
   }
-  if (!opts.noWrap) {
-    const chain = await readChain(m, body).catch(() => null);
-    check();
-    for (let k = chain ? Math.max(2, Math.floor((width * chain.order.length) / svgWidth(compact ?? first))) : 0; chain && k >= 2; k--) {
-      const { src, rows } = wrapSource(chain, k);
-      const rid = `${id}w${k}`;
-      const svg = await attempt(rid, withTitle(title, src));
-      if (!svg) break;
-      if (svgWidth(svg) <= width || k === 2) return { svg, kind: "wrap", natural, wrap: { rid, rows, links: chain.links, k } };
-    }
+  const chain = !opts.noWrap && graph && /^\s*(flowchart|graph)\s+(LR|RL)\b/.test(body) ? chainOf(graph.vertices, graph.edges, graph.subgraphs) : null;
+  for (let k = chain ? Math.max(2, Math.floor((width * chain.order.length) / svgWidth(compact ?? first))) : 0; chain && k >= 2; k--) {
+    const { src, rows } = wrapSource(chain, k);
+    const rid = `${id}w${k}`;
+    const svg = await attempt(rid, frame(title, src, "elk"));
+    if (!svg) break;
+    if (svgWidth(svg) <= width || k === 2) return { svg, kind: "wrap", natural, wrap: { rid, rows, links: chain.links, k } };
   }
   const flipped = flipVertical(body);
   if (flipped !== body) {
-    const svg = await attempt(`${id}c`, withTitle(title, flipped));
+    const svg = await attempt(`${id}c`, frame(title, flipped, flow));
     if (svg) return { svg, kind: "flip", natural };
   }
   return best;
@@ -268,4 +324,44 @@ export function drawReturns(svg: SVGSVGElement, { rid, rows, links, k }: Wrap): 
       svg.appendChild(text);
     }
   }
+}
+
+/** 세 노드 순환: 배치에서 뺀 돌아가는 선을 그림 아래로 돌려(마지막 도형 아래 → 처음 도형 아래) 더한다. 그릴 수 없으면 던진다 */
+export function drawCycleReturn(svg: SVGSVGElement, cycle: Cycle): void {
+  const inv = svg.getScreenCTM()?.inverse();
+  if (!inv) throw new Error("좌표를 잴 수 없음");
+  const node = (id: string) => {
+    const match = new RegExp(`(?:^|-)${id}(?:-|$)`);
+    const el = [...svg.querySelectorAll("g.node")].find((g) => match.test(g.id));
+    if (!el) throw new Error(`도형 ${id} 없음`);
+    const r = el.getBoundingClientRect();
+    const a = new DOMPoint(r.left, r.top).matrixTransform(inv);
+    const b = new DOMPoint(r.right, r.bottom).matrixTransform(inv);
+    return { x: (a.x + b.x) / 2, bottom: b.y };
+  };
+  const from = node(cycle.from);
+  const to = node(cycle.to);
+  const marker = svg.querySelector("path[marker-end]")?.getAttribute("marker-end");
+  if (!marker) throw new Error("화살표 정의 없음");
+  const vb = svg.viewBox.baseVal;
+  const bottom = vb.y + vb.height + 32;
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", `M${from.x},${from.bottom} V${bottom} H${to.x} V${to.bottom + 1}`);
+  path.setAttribute("class", "flowchart-link transition wrap-return");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", DIAGRAM_VARS.lineColor);
+  path.setAttribute("marker-end", marker);
+  svg.appendChild(path);
+  if (cycle.text) {
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("x", String((from.x + to.x) / 2));
+    text.setAttribute("y", String(bottom - 5));
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("class", "wrap-label");
+    text.textContent = displayText(cycle.text);
+    svg.appendChild(text);
+  }
+  const height = bottom + 8 - vb.y;
+  svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.width} ${height}`);
+  svg.setAttribute("height", String(height));
 }

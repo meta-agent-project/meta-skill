@@ -2,11 +2,12 @@
 // meta-mermaid 렌더러 — Mermaid를 정해진 디자인 · 배치 규칙으로 PNG/SVG로 그린다.
 //
 // 쓰는 법:
-//   node render.mjs <원고.md | 도식.mmd> [--width 760] [--out <폴더>] [--format png|svg|both] [--scale 2] [--md-out <파일.md>]
+//   node render.mjs <원고.md | 도식.mmd> [--width 760] [--out <폴더>] [--format png|svg|both|none] [--scale 2] [--md-out <파일.md>]
 //   - .md  : 안의 ```mermaid 블록마다 그림 파일을 만들고, --md-out을 주면 블록을 그림 링크로 바꾼 MD를 쓴다
 //   - .mmd : 도식 하나
 //   --width : 그림이 들어갈 폭(px). 웹 읽는 글 760(기본), 책이면 판면 폭
-// 결과(JSON 한 줄씩): 도식 번호 · 배치(base|compact|wrap|flip) · 비율 · 글자 px · 파일 · 실패 이유
+//   --format none : 그림 파일 없이 재기만 한다(시나리오로 나눌지 판단할 때)
+// 결과(JSON 한 줄씩): 도식 번호 · 배치(base|compact|wrap|flip) · 비율 · 글자 px · 들어갈 폭 · 높이 · 파일 · 실패 이유
 import { mkdirSync, readFileSync, writeFileSync, existsSync, mkdtempSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
@@ -33,7 +34,7 @@ const opt = (name, fallback) => {
 };
 const input = args.find((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
 if (!input) {
-  console.error("쓰는 법: node render.mjs <원고.md | 도식.mmd> [--width 760] [--out 폴더] [--format png|svg|both] [--scale 2] [--md-out 파일.md]");
+  console.error("쓰는 법: node render.mjs <원고.md | 도식.mmd> [--width 760] [--out 폴더] [--format png|svg|both|none] [--scale 2] [--md-out 파일.md]");
   process.exit(1);
 }
 
@@ -45,7 +46,7 @@ const src = readFileSync(input, "utf8");
 const isMd = /\.(md|markdown)$/i.test(input);
 const base = basename(input, extname(input));
 const outDir = resolve(opt("out", join(dirname(input), `${base}-diagrams`)));
-mkdirSync(outDir, { recursive: true });
+if (format !== "none") mkdirSync(outDir, { recursive: true });
 
 // 도식 목록
 const BLOCK = /^```mermaid[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/gm;
@@ -121,7 +122,7 @@ for (const [i, b] of blocks.entries()) {
       await tab.locator("#host svg").screenshot({ path: join(outDir, `${name}.png`), omitBackground: false });
       files.push(join(outDir, `${name}.png`));
     }
-    const r = { diagram: i + 1, layout: info.kind, scale: +info.scale.toFixed(3), fontPx: +info.fontPx.toFixed(1), files };
+    const r = { diagram: i + 1, layout: info.kind, scale: +info.scale.toFixed(3), fontPx: +info.fontPx.toFixed(1), width: Math.round(info.width), height: Math.round(info.height), files };
     results.push({ ...r, link: files.find((f) => f.endsWith(".png")) ?? files[0] }); // 책 · 문서 도구는 PNG가 안전
     console.log(JSON.stringify(r));
   } catch (e) {

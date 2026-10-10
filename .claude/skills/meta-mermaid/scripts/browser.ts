@@ -4,7 +4,7 @@ import mermaid from "mermaid";
 import elkLayouts from "@mermaid-js/layout-elk";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { installElkAdjust } from "../assets/web/elk-adjust";
-import { drawReturns, emphasizeKeys, layoutDiagram, type Laid } from "../assets/web/layout";
+import { drawCycleReturn, drawReturns, emphasizeKeys, layoutDiagram, type Laid } from "../assets/web/layout";
 import { DIAGRAM_CONFIG, DIAGRAM_VARS } from "../assets/web/theme";
 
 // assets/web/Diagram.tsx load()와 같은 순서: 직각 배치 고침 → ELK 등록 → 설정
@@ -12,12 +12,13 @@ installElkAdjust(ELK as never);
 mermaid.registerLayoutLoaders(elkLayouts);
 mermaid.initialize(DIAGRAM_CONFIG);
 
-/** 그림을 넣고 PK 줄 굵게 · 줄바꿈 연결선(Diagram.tsx와 같음). 연결선을 못 그리면 던진다 */
+/** 그림을 넣고 PK 줄 굵게 · 줄바꿈 연결선 · 순환의 돌아가는 선(Diagram.tsx와 같음). 선을 못 그리면 던진다 */
 function put(host: HTMLElement, laid: Laid): SVGSVGElement {
   host.innerHTML = laid.svg;
   emphasizeKeys(host);
   const svg = host.querySelector("svg") as SVGSVGElement;
   if (laid.wrap) drawReturns(svg, laid.wrap);
+  if (laid.cycle) drawCycleReturn(svg, laid.cycle);
   return svg;
 }
 
@@ -29,7 +30,7 @@ async function draw(host: HTMLElement, code: string, id: string) {
   try {
     svg = put(host, laid);
   } catch {
-    // 줄바꿈 연결선을 못 그리면 줄바꿈 없이 다시(Diagram.tsx와 같음)
+    // 더할 선을 못 그리면 줄바꿈 · 순환 보정 없이 다시(Diagram.tsx와 같음)
     laid = await layoutDiagram(mermaid, code, width, `${id}n`, { noWrap: true });
     svg = put(host, laid);
   }
