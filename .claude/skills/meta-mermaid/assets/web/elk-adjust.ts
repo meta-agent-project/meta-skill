@@ -212,7 +212,7 @@ function removeEndJogs(s: ElkSection, off: Pt, from: Rect, to: Rect, blocked: (p
 }
 
 /** layout.ts ELK_COMPACT — mergeEdges 자리에 실려 온 좁힘 표시 */
-const COMPACT_MARK = "meta-compact";
+const COMPACT_MARK = "compact-spacing";
 const MERGE_EDGES = "elk.layered.mergeEdges";
 /** 좁힐 때 ELK 간격 기준값(layout-elk 기본 40) */
 const COMPACT_SPACING = "20";
@@ -237,7 +237,7 @@ export function withAdjust(layout: (g: ElkGraph) => Promise<ElkGraph>): (g: ElkG
 }
 
 type ElkClass = { prototype: { layout: (g: ElkGraph, ...rest: unknown[]) => Promise<ElkGraph> } };
-const INSTALLED = Symbol.for("meta-mermaid.elk-adjust");
+const INSTALLED = Symbol.for("mermaid-diagram.elk-adjust");
 /** elkjs ELK.prototype.layout을 한 번 감싼다(layout-elk가 그릴 때마다 new ELK()를 쓰므로) */
 export function installElkAdjust(ELK: ElkClass): void {
   const proto = ELK.prototype as ElkClass["prototype"] & { [INSTALLED]?: boolean };

@@ -91,7 +91,7 @@ ${fontCss ? `<link rel="stylesheet" href="${pathToFileURL(fontCss).href}">` : ""
 const browser = await chromium.launch();
 const tab = await browser.newPage({ viewport: { width: width + 40, height: 800 }, deviceScaleFactor: scale });
 await tab.goto(pathToFileURL(page).href);
-await tab.waitForFunction(() => window.metaMermaid);
+await tab.waitForFunction(() => window.mermaidDiagram);
 await tab.evaluate(() => document.fonts.ready);
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -103,7 +103,7 @@ for (const [i, b] of blocks.entries()) {
       const host = document.getElementById("host");
       host.innerHTML = "";
       await document.fonts.ready;
-      return window.metaMermaid.draw(host, code, id);
+      return window.mermaidDiagram.draw(host, code, id);
     }, { code: b.code, id: `d${i}` });
     const files = [];
     if (format === "svg" || format === "both") {

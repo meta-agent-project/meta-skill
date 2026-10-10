@@ -39,4 +39,4 @@ async function draw(host: HTMLElement, code: string, id: string) {
   return { kind: laid.kind, scale, fontPx: parseFloat(DIAGRAM_VARS.fontSize) * scale, width: vb.width * scale, height: vb.height * scale };
 }
 
-(window as unknown as { metaMermaid: unknown }).metaMermaid = { draw };
+(window as unknown as { mermaidDiagram: unknown }).mermaidDiagram = { draw };

@@ -27,7 +27,7 @@ export const COMPACT = [
   "  state: { nodeSpacing: 30, rankSpacing: 30 }",
 ];
 /** ELK 간격은 mermaid 설정으로 못 바꾼다 — 이 표시를 실어 보내면 elk-adjust가 간격을 좁힌다 */
-export const ELK_COMPACT = "meta-compact";
+export const ELK_COMPACT = "compact-spacing";
 
 const FRONTMATTER = /^\s*---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/;
 const DIRECTIVE = /^[ \t]*%%\{[\s\S]*?\}%%[ \t]*(\r?\n|$)/gm;
