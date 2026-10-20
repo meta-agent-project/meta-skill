@@ -1,7 +1,7 @@
 # meta-skill
 
 Claude Code에서 쓰는 한국어 스킬 모음이다.
-대화 저장과 복원, 주제 탐색, 문서 작성, 도식 그리기, 스킬 찾기를 돕는다.
+대화 저장과 복원, 주제 탐색, 문서 작성, 도식 그리기, 강의 판서보드 만들기, 스킬 찾기를 돕는다.
 
 ## 스킬
 
@@ -14,6 +14,7 @@ Claude Code에서 쓰는 한국어 스킬 모음이다.
 | meta-deeptalk | 코드를 바꾸지 않고 한 주제를 깊이 논의한다 | 깊게 얘기해 보자 |
 | meta-md | 짧고 일관된 한국어 Markdown 문서를 작성한다 | md 규칙, 문서 다듬어줘 |
 | meta-mermaid | 정해진 작성 규칙과 디자인으로 Mermaid 도식을 작성하고, 요청한 경우에만 PNG/SVG로 내보낸다 | ER 그려줘, 이 흐름 도식으로 |
+| meta-panseo-board | 배경을 고를 수 있는 강의용 판서보드 HTML을 만든다 | 판서보드 만들어줘, 화이트보드 만들어줘 |
 | meta-skill | 필요한 스킬을 찾아 추천하고 요청하면 한국어 스킬로 재작성한다 | 스킬 찾아줘, 스킬 추천 |
 
 ## 내려받기
@@ -26,7 +27,7 @@ cd meta-skill
 claude
 ```
 
-다른 프로젝트에서 쓰려면 .claude/skills 안의 여섯 meta-* 폴더를 해당 프로젝트의 .claude/skills에 복사한다.
+다른 프로젝트에서 쓰려면 .claude/skills 안의 일곱 meta-* 폴더를 해당 프로젝트의 .claude/skills에 복사한다.
 모든 프로젝트에서 쓰려면 ~/.claude/skills에 복사한다.
 같은 이름의 스킬이 있으면 덮어쓰기 전에 내용을 확인한다.
 
@@ -44,6 +45,7 @@ Claude Code 대화창에서 필요한 스킬을 호출한다.
 /meta-deeptalk
 /meta-md
 /meta-mermaid
+/meta-panseo-board
 /meta-skill
 ```
 
