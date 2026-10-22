@@ -50,7 +50,9 @@
   .step .m{will-change:transform,opacity;opacity:0}
 
   /* ── 캔버스 ── */
+  #imgs{position:fixed;inset:0;z-index:2;pointer-events:none}
   #pad{position:fixed;inset:0;z-index:2;touch-action:none;cursor:crosshair}
+  body.imgdrop #pad{outline:3px dashed var(--sel,#1f5fd1);outline-offset:-10px}
   #ui{position:fixed;inset:0;z-index:4;pointer-events:none}
   #texts{position:fixed;inset:0;z-index:3;pointer-events:none}
   .tx{position:absolute;transform-origin:center center;line-height:1.35;padding:6px 8px;white-space:pre-wrap;word-break:break-word;
@@ -155,7 +157,9 @@
   <!-- ===================== STEPS END ===================== -->
 
 </div>
+<canvas id="imgs"></canvas>
 <canvas id="pad"></canvas>
+<input type="file" id="imgFile" accept="image/*" hidden>
 <div id="texts"></div>
 <canvas id="ui"></canvas>
 <div id="ring"></div>
@@ -210,9 +214,10 @@
 
 <div class="fly bar" id="fMore" role="menu" aria-label="더보기">
   <button class="mi" id="mGrid" data-i="grid">모눈 켜기</button>
+  <button class="mi" id="mImg" data-i="image">이미지 넣기 (Ctrl+V)</button>
   <button class="mi" id="mAdd" data-i="plus">빈 페이지 추가</button>
   <button class="mi" id="mClear" data-i="clear">이 페이지 판서 모두 지우기</button>
-  <div class="keys">P 펜 · E 지우개 · V 선택 · T 텍스트<br>1 네모 · 2 동그라미 · 3 세모 · 4 화살표 · 5 다이어그램<br>[ ] 크기(글자·지우개·펜) · G 모눈 · W 배경 · R 모션 다시 · Del 삭제<br>← → 페이지 · Ctrl+Z 되돌리기</div>
+  <div class="keys">P 펜 · E 지우개 · V 선택 · T 텍스트<br>1 네모 · 2 동그라미 · 3 세모 · 4 화살표 · 5 다이어그램<br>[ ] 크기(글자·지우개·펜) · G 모눈 · W 배경 · R 모션 다시 · Del 삭제<br>← → 페이지 · Ctrl+Z 되돌리기 · Ctrl+V 이미지 붙여넣기</div>
 </div>
 
 <!-- 오른쪽 위 -->
@@ -273,6 +278,7 @@ const IC={
   grid:'<path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
   clear:'<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
+  image:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
   dup:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
   left:'<path d="M15 5l-7 7 7 7"/>', right:'<path d="M9 5l7 7-7 7"/>',
   rect:'<rect x="4" y="6" width="16" height="12" rx="1"/>',
@@ -304,10 +310,11 @@ function setItems(arr){ items=arr; layers[cur]=arr; }
 
 /* ───────── 캔버스 ───────── */
 const pad=$('pad'), ctx=pad.getContext('2d'), ui=$('ui'), uctx=ui.getContext('2d');
+const imgsC=$('imgs'), ictx=imgsC.getContext('2d');
 let W=innerWidth, H=innerHeight, dpr=1;
 function fit(){
   dpr=Math.max(1,window.devicePixelRatio||1); W=innerWidth; H=innerHeight;
-  for(const [c,x] of [[pad,ctx],[ui,uctx]]){
+  for(const [c,x] of [[pad,ctx],[ui,uctx],[imgsC,ictx]]){
     c.width=Math.round(W*dpr); c.height=Math.round(H*dpr); c.style.width=W+'px'; c.style.height=H+'px';
     x.setTransform(dpr,0,0,dpr,0,0); x.lineCap='round'; x.lineJoin='round';
   }
@@ -333,7 +340,7 @@ const headH=it=>Math.min(58,Math.max(34,Math.abs(it.h)*0.26));
 function outline(it){
   const w=it.w,h=it.h;
   switch(it.t){
-    case 'rect': case 'text': return [[[0,0],[w,0],[w,h],[0,h],[0,0]]];
+    case 'rect': case 'text': case 'image': return [[[0,0],[w,0],[w,h],[0,h],[0,0]]];
     case 'diagram': return [[[0,0],[w,0],[w,h],[0,h],[0,0]],[[0,headH(it)],[w,headH(it)]]];
     case 'ellipse': { const a=[]; for(let i=0;i<=40;i++){ const t=i/40*Math.PI*2; a.push([w/2+w/2*Math.cos(t), h/2+h/2*Math.sin(t)]); } return [a]; }
     case 'tri': { const p=it.p.map(q=>[q[0]*w,q[1]*h]); return [[...p,p[0]]]; }
@@ -344,10 +351,12 @@ function distOutline(it,p){ const l=toLocal(it,p); let m=1e9; for(const pl of ou
 function insideItem(it,p){ const l=toLocal(it,p), b=localBox(it); return l.x>=b.x0&&l.x<=b.x1&&l.y>=b.y0&&l.y<=b.y1; }
 function hitItem(it,p){
   if(it.t==='stroke') return distStroke(p,it)<=10+it.size;
-  if(it.t==='text'||it.t==='diagram') return insideItem(it,p);
+  if(it.t==='text'||it.t==='diagram'||it.t==='image') return insideItem(it,p);
   return distOutline(it,p)<=12+it.size;
 }
-function pickItem(p){ for(let i=items.length-1;i>=0;i--) if(hitItem(items[i],p)) return items[i]; return null; }
+// 이미지는 판서 아래 층에 그리므로, 위에 있는 판서·도형을 먼저 잡고 이미지는 마지막에 잡는다
+function pickItem(p){ for(let i=items.length-1;i>=0;i--) if(items[i].t!=='image'&&hitItem(items[i],p)) return items[i];
+  for(let i=items.length-1;i>=0;i--) if(items[i].t==='image'&&hitItem(items[i],p)) return items[i]; return null; }
 
 /* ───────── 그리기 ───────── */
 const lw=(s,pr)=>Math.max(1,s*(0.45+pr*1.1));
@@ -369,7 +378,7 @@ function wrap(c,text,maxW){
 function cssVar(n){ return getComputedStyle(document.body).getPropertyValue(n).trim(); }
 function drawItem(c,it){
   if(it.t==='stroke'){ const q=it.pts; if(q.length===1) drawSeg(c,it.color,it.size,q[0],q[0]); else for(let i=1;i<q.length;i++) drawSeg(c,it.color,it.size,q[i-1],q[i]); return; }
-  if(it.t==='text') return;
+  if(it.t==='text'||it.t==='image') return;
   const sw=it.size*0.9+1.2;
   c.save();
   const cc=center(it); c.translate(cc.x,cc.y); c.rotate(it.rot||0); c.translate(-it.w/2,-it.h/2);
@@ -399,7 +408,15 @@ function drawItem(c,it){
   }
   c.restore();
 }
-function render(){ ctx.clearRect(0,0,W,H); for(const it of items) drawItem(ctx,it); renderTexts(); }
+/* 이미지: 원본은 IMGS에 한 번만 두고 객체에는 id만 (되돌리기 기록이 가벼워진다) */
+const IMGS={}, imgEls={};
+function imgEl(id){ let el=imgEls[id]; if(!el&&IMGS[id]){ el=imgEls[id]=new Image(); el.onload=()=>render(); el.src=IMGS[id]; } return el; }
+function renderImages(){
+  ictx.clearRect(0,0,W,H);
+  for(const it of items){ if(it.t!=='image') continue; const el=imgEl(it.img); if(!el||!el.complete||!el.naturalWidth) continue;
+    ictx.save(); const c=center(it); ictx.translate(c.x,c.y); ictx.rotate(it.rot||0); ictx.drawImage(el,-it.w/2,-it.h/2,it.w,it.h); ictx.restore(); }
+}
+function render(){ ctx.clearRect(0,0,W,H); renderImages(); for(const it of items) drawItem(ctx,it); renderTexts(); }
 
 /* ───────── 선택 표시(UI 캔버스) ───────── */
 let sel=[], drag=null, marquee=null;
@@ -861,7 +878,8 @@ pad.addEventListener('pointermove',e=>{
   else if(drag.k==='res'){
     beginChange(); const it=drag.it, rot=it.rot||0, a=drag.anchor, dx=p.x-a.x, dy=p.y-a.y;
     const lx=dx*Math.cos(-rot)-dy*Math.sin(-rot), ly=dx*Math.sin(-rot)+dy*Math.cos(-rot);
-    const w=Math.max(30,lx-10), h=it.t==='text'?null:Math.max(24,ly-10);
+    let w=Math.max(30,lx-10), h=it.t==='text'?null:Math.max(24,ly-10);
+    if(it.t==='image'){ w=Math.max(30,((lx-10)+(ly-10)*it.ar)/(1+it.ar*it.ar)); h=w*it.ar; }   // 끈 위치를 대각선에 투영해 비율 유지
     it.w=w; if(h==null) renderTexts(); else it.h=h;
     const c={x:a.x+(it.w/2)*Math.cos(rot)-(it.h/2)*Math.sin(rot), y:a.y+(it.w/2)*Math.sin(rot)+(it.h/2)*Math.cos(rot)};
     it.x=c.x-it.w/2; it.y=c.y-it.h/2; render(); drawUI();
@@ -909,6 +927,7 @@ function applyErase(path){
       for(const q of it.pts){ if(nearPath(q,path,rr)){ removed=true; if(piece.length){ out.push({t:'stroke',color:it.color,size:it.size,pts:piece}); piece=[]; } } else piece.push(q); }
       if(!removed){ out.push(it); continue; }
       changed=true; if(piece.length) out.push({t:'stroke',color:it.color,size:it.size,pts:piece});
+    } else if(it.t==='image'){ out.push(it);   // 이미지는 지우개로 지우지 않는다(선택 후 삭제)
     } else {
       const hit=path.some(q=>it.t==='text'?insideItem(it,q):distOutline(it,q)<=r+it.size);
       if(hit) changed=true; else out.push(it);
@@ -1017,6 +1036,46 @@ addEventListener('keydown',e=>{
   else if(k==='Delete'||k==='Backspace'){ e.preventDefault(); doDelete(); }
   else if(k==='Escape'){ closeFlys(); clearSel(); }
 });
+
+/* ───────── 이미지 붙여넣기 (Ctrl+V · 끌어다 놓기 · 더보기 > 이미지 넣기) ───────── */
+let lastPtr=null;
+pad.addEventListener('pointermove',e=>{ lastPtr={x:e.clientX,y:e.clientY}; });
+function addImageBlob(blob,at){
+  if(!blob||!/^image\//.test(blob.type)) return false;
+  const url=URL.createObjectURL(blob), el=new Image();
+  el.onload=()=>{
+    URL.revokeObjectURL(url);
+    const nw=el.naturalWidth, nh=el.naturalHeight; if(!nw||!nh) return;
+    const k=Math.min(1,2560/Math.max(nw,nh));            // 너무 큰 이미지는 2560px로 줄여 보관
+    const cv=document.createElement('canvas'); cv.width=Math.round(nw*k); cv.height=Math.round(nh*k);
+    cv.getContext('2d').drawImage(el,0,0,cv.width,cv.height);
+    const id='i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    IMGS[id]=cv.toDataURL(blob.type==='image/jpeg'?'image/jpeg':'image/png',0.92); imgEls[id]=el;
+    let w=nw/dpr, h=nh/dpr; const f=Math.min(1,W*0.7/w,H*0.7/h); w*=f; h*=f;   // 화면의 70% 안으로, 키우지는 않음
+    const c=at||lastPtr||{x:W/2,y:H/2};
+    const x=Math.max(8,Math.min(W-w-8,c.x-w/2)), y=Math.max(8,Math.min(H-h-8,c.y-h/2));
+    closeEditor(); hideChip(); closeFlys(); snap();
+    const it={t:'image',img:id,x,y,w,h,ar:h/w,rot:0};
+    items.push(it); setTool('select'); sel=[it]; render(); drawUI();
+  };
+  el.onerror=()=>{ URL.revokeObjectURL(url); showHud('이미지를 읽지 못했습니다',W/2,H/2); };
+  el.src=url; return true;
+}
+document.addEventListener('paste',e=>{
+  if(editing||edItem) return;                               // 글 편집 중엔 기존처럼 글자만 붙인다
+  const t=e.target; if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA)$/.test(t.tagName))) return;
+  const it=[...((e.clipboardData&&e.clipboardData.items)||[])].find(i=>i.kind==='file'&&/^image\//.test(i.type));
+  if(it){ e.preventDefault(); addImageBlob(it.getAsFile()); }
+});
+const hasFiles=e=>e.dataTransfer&&[...e.dataTransfer.types].includes('Files');
+addEventListener('dragover',e=>{ if(hasFiles(e)){ e.preventDefault(); document.body.classList.add('imgdrop'); } });
+addEventListener('dragleave',e=>{ if(!e.relatedTarget) document.body.classList.remove('imgdrop'); });
+addEventListener('drop',e=>{
+  document.body.classList.remove('imgdrop'); if(!hasFiles(e)) return; e.preventDefault();
+  [...e.dataTransfer.files].filter(f=>/^image\//.test(f.type)).forEach((f,i)=>addImageBlob(f,{x:e.clientX+i*28,y:e.clientY+i*28}));
+});
+$('mImg').addEventListener('click',()=>{ closeFlys(); $('imgFile').click(); });
+$('imgFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) addImageBlob(f); e.target.value=''; });
 
 /* ───────── 시작 ───────── */
 addEventListener('resize',fit);
