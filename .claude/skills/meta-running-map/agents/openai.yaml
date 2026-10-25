@@ -1,0 +1,4 @@
+interface:
+  display_name: "실제 지도 러닝 코스"
+  short_description: "실제 보행 경로 지도와 재생 화면, 책용 이미지·QR·GPX 제작"
+  default_prompt: "$meta-running-map으로 실제 지도 기반 러닝 코스 웹페이지와 책용 지도 이미지, QR코드, GPX를 만들어줘."
